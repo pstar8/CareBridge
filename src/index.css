@@ -1,0 +1,172 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    background-color: #f8fafc;
+    color: #1e293b;
+    font-family: 'DM Sans', system-ui, sans-serif;
+  }
+}
+
+.font-display {
+  font-family: 'Outfit', system-ui, sans-serif;
+}
+
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: #475569;
+  transition: all 0.15s;
+}
+
+.sidebar-link:hover {
+  background-color: #f1f5f9;
+  color: #0f766e;
+}
+
+.sidebar-link.active {
+  background-color: #ccfbef;
+  color: #0f766e;
+}
+
+.card {
+  background: white;
+  border-radius: 0.75rem;
+  border: 1px solid #e2e8f0;
+  padding: 1.25rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.btn-primary {
+  background-color: #0d9488;
+  color: white;
+  padding: 0.625rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.btn-primary:hover {
+  background-color: #0f766e;
+}
+
+.btn-secondary {
+  background-color: white;
+  color: #0d9488;
+  padding: 0.625rem 1.5rem;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  border: 1px solid #0d9488;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.btn-secondary:hover {
+  background-color: #f0fdf9;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.65rem;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.badge-green {
+  background-color: #dcfce7;
+  color: #15803d;
+}
+
+.badge-yellow {
+  background-color: #fef9c3;
+  color: #a16207;
+}
+
+.badge-red {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
+.badge-blue {
+  background-color: #dbeafe;
+  color: #2563eb;
+}
+
+.badge-teal {
+  background-color: #ccfbef;
+  color: #0f766e;
+}
+
+.badge-gray {
+  background-color: #f1f5f9;
+  color: #475569;
+}
+
+/* Accessibility preferences applied from Settings */
+.large-text {
+  font-size: 112%;
+}
+
+.large-text .text-xs { font-size: 0.86rem !important; }
+.large-text .text-sm { font-size: 1rem !important; }
+.large-text .text-base { font-size: 1.08rem !important; }
+.large-text .text-lg { font-size: 1.2rem !important; }
+.large-text .text-xl { font-size: 1.35rem !important; }
+.large-text .text-2xl { font-size: 1.65rem !important; }
+
+.high-contrast {
+  background: #ffffff !important;
+  color: #0f172a !important;
+}
+
+.high-contrast .card,
+.high-contrast header,
+.high-contrast aside,
+.high-contrast input,
+.high-contrast textarea,
+.high-contrast select {
+  border-color: #0f172a !important;
+  box-shadow: none !important;
+}
+
+.high-contrast .bg-slate-50,
+.high-contrast .bg-teal-50,
+.high-contrast .bg-purple-50,
+.high-contrast .bg-blue-50,
+.high-contrast .bg-green-50,
+.high-contrast .bg-yellow-50 {
+  background-color: #ffffff !important;
+}
+
+.high-contrast .text-slate-400,
+.high-contrast .text-slate-500,
+.high-contrast .text-slate-600,
+.high-contrast .text-slate-700 {
+  color: #0f172a !important;
+}
+
+.high-contrast .btn-primary {
+  background-color: #000000 !important;
+  color: #ffffff !important;
+}
+
+.high-contrast .btn-secondary {
+  background-color: #ffffff !important;
+  color: #000000 !important;
+  border-color: #000000 !important;
+}
