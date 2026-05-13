@@ -62,6 +62,16 @@ class ExtractRequest(BaseModel):
     raw_text: str       # extracted text from the document
     doc_type: str       # appointment | test_result | medication | discharge | other
 
+class ChatMessage(BaseModel):
+    role:    str   # "user" | "assistant"
+    content: str
+
+class ChatRequest(BaseModel):
+    document_id: str | None = None   # optional — None means cross-document chat
+    user_id:     str                 # required for RAG retrieval + history
+    message:     str
+    history:     list[ChatMessage] = []  # recent conversation turns
+
 
 # ── File helpers ──────────────────────────────────────────────────────────────
 def download_file(signed_url: str) -> bytes:
@@ -548,30 +558,11 @@ async def translate_endpoint(req: TranslateRequest):
         raise HTTPException(status_code=422, detail="text is empty.")
 
     translated = translate(req.text, req.language)
-    return { "translated": translated }# ── /chat — Per-document conversational AI ───────────────────────────────────
-# Add this ChatMessage model + endpoint to the bottom of main.py,
-# just before or after the /translate endpoint.
-
-class ChatMessage(BaseModel):
-    role:    str   # "user" | "assistant"
-    content: str
-
-class ChatRequest(BaseModel):
-    document_id: str | None = None   # optional — None means cross-document chat
-    user_id:     str                 # required for RAG retrieval + history
-    message:     str
-    history:     list[ChatMessage] = []  # recent conversation turns
-
+    return { "translated": translated }
 
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
-    """
-    RAG-powered health chat.
-    - Retrieves semantically relevant chunks from ALL user documents
-    - Loads recent chat_history so AI remembers past sessions
-    - Connects symptoms across time (heartburn → chest pain → vomiting)
-    """
-    # 1. Retrieve relevant chunks from the user's full document history
+    # 1. Retrieve relevant chunks from ALL user documents (RAG memory)
     context_chunks = retrieve_relevant_chunks(
         user_id=req.user_id,
         query=req.message,
@@ -589,25 +580,26 @@ async def chat_endpoint(req: ChatRequest):
     )
     past_turns = list(reversed(history_result.data or []))
 
-    # 3. Build system prompt with retrieved context
-    system_prompt = f"""You are CareBridge AI, a warm and careful health communication assistant 
-for immigrant families and people with low health literacy.
+    # 3. System prompt with retrieved health context
+    system_prompt = f"""You are CareBridge AI, a warm and careful health communication 
+assistant for immigrant families and people with low health literacy.
 
-You have access to the user's relevant past health records, retrieved from their uploaded documents:
+You have access to the user's relevant past health records from their uploaded documents:
 
 ===== RELEVANT HEALTH CONTEXT =====
 {context_text}
 ===== END OF CONTEXT =====
 
-Use this context to connect patterns across time — for example, if past records mention 
-heartburn and the user now reports chest pain or vomiting, flag that connection clearly.
+Use this context to connect patterns across time. If past records mention heartburn 
+and the user now reports chest pain or vomiting, flag that connection clearly.
 
 Rules:
-1. Answer in simple, plain language a 14-year-old could understand.
+1. Answer in simple plain language a 14-year-old could understand.
 2. If you spot a symptom pattern that could be serious, say so clearly and advise seeing a doctor.
 3. Never diagnose. Never tell the user to start or stop any medication.
-4. If the context doesn't cover the question, say so and suggest they ask their doctor.
-5. Always end with: "If you are worried about your symptoms, please contact your GP or call 111."
+4. If context doesn't cover the question, say so and suggest they ask their doctor.
+5. Include 2-3 "Questions to ask your doctor" as bullet points ending in "?" when relevant.
+6. Always end with: "If you are worried, please contact your GP or call 111."
 """
 
     messages = [{"role": "system", "content": system_prompt}]
@@ -624,7 +616,7 @@ Rules:
     )
     reply = response.choices[0].message.content.strip()
 
-    # 5. Save this turn to chat_history (persistence)
+    # 5. Save turn to Supabase for persistence
     supabase.table("chat_history").insert([
         {"user_id": req.user_id, "document_id": req.document_id, "role": "user",      "content": req.message},
         {"user_id": req.user_id, "document_id": req.document_id, "role": "assistant", "content": reply},
