@@ -359,6 +359,67 @@ Return only the translated text. No explanation, no preamble."""
 
     return response.choices[0].message.content
 
+# ── RAG: Chunk + Embed ────────────────────────────────────────────────────────
+def chunk_and_embed(document_id: str, user_id: str, raw_text: str, doc_type: str):
+    """
+    Splits raw_text into overlapping chunks, embeds each one with OpenAI,
+    and stores them in Supabase document_chunks.
+    Called once per document inside /process.
+    """
+    # Simple chunking: 400-word windows with 80-word overlap
+    words  = raw_text.split()
+    size, overlap = 400, 80
+    chunks = []
+    i = 0
+    while i < len(words):
+        chunk = " ".join(words[i : i + size])
+        chunks.append(chunk)
+        i += size - overlap
+
+    if not chunks:
+        return
+
+    # Embed all chunks in one API call (cheaper + faster)
+    response = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=chunks,
+    )
+
+    rows = [
+        {
+            "document_id": document_id,
+            "user_id":     user_id,
+            "chunk_index": idx,
+            "chunk_text":  chunk,
+            "embedding":   response.data[idx].embedding,
+            "doc_type":    doc_type,
+        }
+        for idx, chunk in enumerate(chunks)
+    ]
+
+    supabase.table("document_chunks").insert(rows).execute()
+
+
+# ── RAG: Retrieve relevant chunks ────────────────────────────────────────────
+def retrieve_relevant_chunks(user_id: str, query: str, top_k: int = 5) -> list[str]:
+    """
+    Embeds the user's query and retrieves the top_k most semantically
+    similar chunks across ALL of that user's documents.
+    This is what connects 'heartburn last week' to 'chest pain today'.
+    """
+    query_embedding = client.embeddings.create(
+        model="text-embedding-3-small",
+        input=[query],
+    ).data[0].embedding
+
+    result = supabase.rpc("match_chunks", {
+        "query_embedding": query_embedding,
+        "match_user_id":   user_id,
+        "match_count":     top_k,
+    }).execute()
+
+    return [row["chunk_text"] for row in (result.data or [])]
+
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
@@ -414,7 +475,8 @@ async def process_document(req: ProcessRequest):
       5. Simplify (plain English, isolated step)
       6. Translate if needed (isolated step with medical guardrails)
       7. Save raw_text + summary back to Supabase documents table
-      8. Return everything to the frontend
+      8. Chunk and embed for RAG memory
+      9. Return everything to the frontend
     """
     # 1. Download
     file_bytes = download_file(req.file_url)
@@ -453,7 +515,11 @@ async def process_document(req: ProcessRequest):
         "status":   "processed",
     }).eq("id", req.document_id).execute()
 
-    # 8. Return full payload to frontend
+    # 8. Chunk and embed for RAG memory ← ADDED
+    user_id = req.document_id  # swap this for real user_id once auth is wired
+    chunk_and_embed(req.document_id, user_id, raw_text, effective_type)
+
+    # 9. Return full payload to frontend
     return {
         "document_id":       req.document_id,
         "doc_type":          effective_type,
@@ -491,93 +557,77 @@ class ChatMessage(BaseModel):
     content: str
 
 class ChatRequest(BaseModel):
-    document_id: str
+    document_id: str | None = None   # optional — None means cross-document chat
+    user_id:     str                 # required for RAG retrieval + history
     message:     str
-    history:     list[ChatMessage] = []   # recent conversation turns
+    history:     list[ChatMessage] = []  # recent conversation turns
 
 
 @app.post("/chat")
 async def chat_endpoint(req: ChatRequest):
     """
-    Answers a user question grounded in a specific uploaded document.
-
-    Flow:
-      1. Fetch raw_text + metadata for document_id from Supabase
-      2. Build a system prompt that anchors the model to that document only
-      3. Append conversation history + new message
-      4. Call GPT and return the reply
-
-    The model is explicitly instructed:
-      - Only answer from the document text
-      - Say "the document does not mention this" if the answer isn't there
-      - Never diagnose, never recommend stopping/starting medication
+    RAG-powered health chat.
+    - Retrieves semantically relevant chunks from ALL user documents
+    - Loads recent chat_history so AI remembers past sessions
+    - Connects symptoms across time (heartburn → chest pain → vomiting)
     """
-    # 1. Fetch document from Supabase
-    db_result = (
-        supabase
-        .table("documents")
-        .select("raw_text, filename, file_type, summary")
-        .eq("id", req.document_id)
-        .single()
+    # 1. Retrieve relevant chunks from the user's full document history
+    context_chunks = retrieve_relevant_chunks(
+        user_id=req.user_id,
+        query=req.message,
+    )
+    context_text = "\n\n---\n\n".join(context_chunks) if context_chunks else "No relevant past records found."
+
+    # 2. Load recent chat history from Supabase (persistent across sessions)
+    history_result = (
+        supabase.table("chat_history")
+        .select("role, content")
+        .eq("user_id", req.user_id)
+        .order("created_at", desc=True)
+        .limit(10)
         .execute()
     )
+    past_turns = list(reversed(history_result.data or []))
 
-    if not db_result.data:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Document {req.document_id} not found.",
-        )
+    # 3. Build system prompt with retrieved context
+    system_prompt = f"""You are CareBridge AI, a warm and careful health communication assistant 
+for immigrant families and people with low health literacy.
 
-    doc      = db_result.data
-    raw_text = doc.get("raw_text") or doc.get("summary") or ""
+You have access to the user's relevant past health records, retrieved from their uploaded documents:
 
-    if not raw_text.strip():
-        raise HTTPException(
-            status_code=422,
-            detail="This document has no extracted text to chat about. "
-                   "Try re-uploading or processing it first.",
-        )
+===== RELEVANT HEALTH CONTEXT =====
+{context_text}
+===== END OF CONTEXT =====
 
-    filename  = doc.get("filename", "your document")
-    file_type = (doc.get("file_type") or "medical document").replace("_", " ")
+Use this context to connect patterns across time — for example, if past records mention 
+heartburn and the user now reports chest pain or vomiting, flag that connection clearly.
 
-    # 2. Build a grounded system prompt
-    system_prompt = f"""You are CareBridge AI, a friendly health communication assistant.
-You are answering questions about a specific {file_type} that the user uploaded: "{filename}".
+Rules:
+1. Answer in simple, plain language a 14-year-old could understand.
+2. If you spot a symptom pattern that could be serious, say so clearly and advise seeing a doctor.
+3. Never diagnose. Never tell the user to start or stop any medication.
+4. If the context doesn't cover the question, say so and suggest they ask their doctor.
+5. Always end with: "If you are worried about your symptoms, please contact your GP or call 111."
+"""
 
-The full text of that document is provided below. Answer ONLY from what is written there.
-
-===== DOCUMENT TEXT =====
-{raw_text[:6000]}
-===== END OF DOCUMENT =====
-
-Rules you must follow:
-1. If the answer is clearly in the document, answer it in simple, plain language.
-2. If the answer is NOT in the document, say: "The document doesn't mention that — your doctor or clinic would be the best person to ask."
-3. Never diagnose a condition. Never recommend starting, stopping, or changing any medication.
-4. Never invent details, dates, or instructions that are not in the document.
-5. Keep answers short and easy to understand — aim for 2–4 sentences unless the question requires more.
-6. If the user seems worried or distressed, acknowledge their feelings kindly before answering.
-7. End every response about medication with: "Always check with your doctor or pharmacist before making any changes." """
-
-    # 3. Build the messages list
-    messages: list[dict] = [{"role": "system", "content": system_prompt}]
-
-    # Include up to last 10 history turns to avoid ballooning context
-    for turn in req.history[-10:]:
-        messages.append({"role": turn.role, "content": turn.content})
-
-    # Add the new user message
+    messages = [{"role": "system", "content": system_prompt}]
+    for turn in past_turns:
+        messages.append({"role": turn["role"], "content": turn["content"]})
     messages.append({"role": "user", "content": req.message})
 
     # 4. Call GPT
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        max_tokens=400,
+        max_tokens=500,
         messages=messages,
-        temperature=0.3,   # factual, warm — not creative
+        temperature=0.3,
     )
-
     reply = response.choices[0].message.content.strip()
-    return {"reply": reply}
 
+    # 5. Save this turn to chat_history (persistence)
+    supabase.table("chat_history").insert([
+        {"user_id": req.user_id, "document_id": req.document_id, "role": "user",      "content": req.message},
+        {"user_id": req.user_id, "document_id": req.document_id, "role": "assistant", "content": reply},
+    ]).execute()
+
+    return {"reply": reply}
