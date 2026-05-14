@@ -84,6 +84,7 @@ export default function DiagnosisExplainer() {
       polish:               'pl',
     };
     const langCode = backendLangMap[language];
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!langCode) { setTranslated(''); return; }
 
     setTranslating(true);
@@ -147,10 +148,11 @@ export default function DiagnosisExplainer() {
 
       addNotification(`Generated explanation for ${value}`, 'ai');
 
-    } catch (err) {
+    
+    } catch {
       setMessages(prev => [...prev, {
         role: 'assistant',
-        text: `Sorry, something went wrong: ${err.message}. Please try again.`,
+        text: `🩺 Plot twist: the feature that explains diagnoses... needs its own diagnosis. Coming post-hackathon!`,
       }]);
     } finally {
       setLoading(false);
