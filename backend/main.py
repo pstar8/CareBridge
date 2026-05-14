@@ -34,10 +34,10 @@ app.add_middleware(
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # ── Supabase client ───────────────────────────────────────────────────────────  ← ADDED
-supabase: Client = create_client(
-    os.getenv("VITE_SUPABASE_URL"),
-    os.getenv("VITE_SUPABASE_SERVICE_KEY"),  # service role so backend can write freely
-)
+SUPABASE_URL = os.getenv("VITE_SUPABASE_URL")
+SUPABASE_KEY = os.getenv("VITE_SUPABASE_SERVICE_KEY")
+
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ── Language labels ───────────────────────────────────────────────────────────
 LANGUAGE_LABELS = {
