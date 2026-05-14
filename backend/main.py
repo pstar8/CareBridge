@@ -522,12 +522,15 @@ async def process_document(req: ProcessRequest):
     # 6. Translate — isolated step with medical guardrails, skipped if language is 'en'
     final_summary = translate(simplified_english, req.language)
 
-    # 7. Save results back to Supabase ← ADDED
-    supabase.table("documents").update({
-        "raw_text": raw_text[:10000],   # column name confirmed: raw_text
-        "summary":  final_summary,       # column name confirmed: summary
-        "status":   "processed",
-    }).eq("id", req.document_id).execute()
+    # 7. Save results back to Supabase
+    try:
+        supabase.table("documents").update({
+            "raw_text": raw_text[:10000],
+            "summary":  final_summary,
+            "status":   "processed",
+        }).eq("id", req.document_id).execute()
+    except Exception as e:
+        print(f"Supabase save failed (non-fatal): {e}")
 
     # 8. Chunk and embed for RAG memory ← ADDED
     user_id = req.document_id  # swap this for real user_id once auth is wired
