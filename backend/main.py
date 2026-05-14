@@ -42,7 +42,7 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 # ── Language labels ───────────────────────────────────────────────────────────
 LANGUAGE_LABELS = {
     "en":    "English",
-    "ur":    "Urdu",
+    "ur-PK":    "Urdu",
     "ro-ur": "Roman Urdu (Urdu written in Latin script)",
     "hi":    "Hindi",
     "ar":    "Arabic",

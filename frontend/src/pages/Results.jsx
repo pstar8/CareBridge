@@ -222,7 +222,7 @@ export default function Results() {
     const langCode = languageCodes?.[language];
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!langCode || langCode === 'en-GB' || langCode === 'en-US') { setTranslated(''); return; }
-    const map = { urdu:'ur', brazilian_portuguese:'pt', french:'fr', japanese:'ja', hindi:'hi', arabic:'ar', spanish:'es', polish:'pl' };
+    const map = { urdu:'ur-PK', brazilian_portuguese:'pt-BR', french:'fr-FR', japanese:'ja-JP', hindi:'hi-IN', arabic:'ar-SA', spanish:'es-ES', polish:'pl-PL' };
     setTranslating(true);
     fetch(`${API_BASE}/translate`, {
       method: 'POST',
