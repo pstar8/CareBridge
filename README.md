@@ -1,4 +1,4 @@
-# CareBridge AI 🌉
+# CareBridge AI 💚
 
 > A multilingual health communication assistant for immigrant families and anyone who finds medical letters, test results, or medication instructions confusing.
 
