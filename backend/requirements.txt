@@ -8,4 +8,5 @@ requests
 openai
 python-dotenv
 pillow
+supabase
 pytesseract
