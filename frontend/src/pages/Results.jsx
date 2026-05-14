@@ -9,6 +9,7 @@ import ReadAloudButton from '../components/ReadAloudButton';
 import ReadableText from '../components/ReadableText';
 import { languages, languageCodes } from '../data/mockData';
 import { getSettings, addNotification } from '../utils/storage';
+import { supabase } from '../lib/supabase';
 import { saveAppointmentToSupabase, saveMedicationToSupabase } from '../lib/supabaseSync';
 
 const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000';
@@ -102,7 +103,7 @@ function Section({ icon: Icon, title, color = 'text-teal-600', children }) {
 }
 
 // ── Per-document AI Chat ──────────────────────────────────────────────────────
-function DocumentChat({ documentId }) {
+function DocumentChat({ documentId, documentSummary }) {
   const [messages, setMessages] = useState([
     { role: 'assistant', content: "Hi! I've read your document and I'm ready to answer questions about it. What would you like to know?" },
   ]);
@@ -123,13 +124,18 @@ function DocumentChat({ documentId }) {
     setInput('');
     setLoading(true);
     try {
+      // Get Supabase user session for user_id
+      const { data: { session } } = await supabase.auth.getSession();
+      const userId = session?.user?.id || 'anonymous';
+
       const res = await fetch(`${API_BASE}/chat`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({
-          document_id: documentId,
-          message:     text,
-          history:     next.slice(1).map(m => ({ role: m.role, content: m.content })),
+          document_id:      documentId,
+          user_id:          userId,          // ← the missing field
+          message:          text,
+          document_summary: documentSummary, // ← grounds the chat in THIS doc
         }),
       });
       if (!res.ok) throw new Error(`Server error ${res.status}`);
@@ -437,7 +443,12 @@ export default function Results() {
       )}
 
       {/* Per-document AI chat */}
-      {documentId && <DocumentChat documentId={documentId} />}
+        {documentId && (
+          <DocumentChat
+            documentId={documentId}
+            documentSummary={result?.summary_english || result?.summary || ''}
+          />
+        )}
       <SafetyBanner />
     </div>
   );

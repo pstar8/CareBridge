@@ -74,6 +74,7 @@ class ChatRequest(BaseModel):
     document_id: str | None = None   # optional — None means cross-document chat
     user_id:     str                 # required for RAG retrieval + history
     message:     str
+    document_summary: str = ""       
     history:     list[ChatMessage] = []  # recent conversation turns
 
 
@@ -581,6 +582,7 @@ async def chat_endpoint(req: ChatRequest):
         supabase.table("chat_history")
         .select("role, content")
         .eq("user_id", req.user_id)
+        .eq("document_id", req.document_id)  # only load history for this document
         .order("created_at", desc=True)
         .limit(10)
         .execute()
@@ -588,9 +590,19 @@ async def chat_endpoint(req: ChatRequest):
     past_turns = list(reversed(history_result.data or []))
 
     # 3. System prompt with retrieved health context
+    doc_context = ""
+    if req.document_summary:
+        doc_context = f"""
+===== THIS DOCUMENT =====
+{req.document_summary}
+===== END OF DOCUMENT =====
+
+    Answer questions based primarily on the document above.
+    """
     system_prompt = f"""You are CareBridge AI, a warm and careful health communication 
 assistant for immigrant families and people with low health literacy.
 
+{doc_context}
 You have access to the user's relevant past health records from their uploaded documents:
 
 ===== RELEVANT HEALTH CONTEXT =====
